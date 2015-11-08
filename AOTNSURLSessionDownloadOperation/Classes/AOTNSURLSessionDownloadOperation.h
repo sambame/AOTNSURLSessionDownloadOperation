@@ -7,7 +7,7 @@
 
 @class AFURLSessionManager;
 
-typedef void (^AOTCompletionBlock)(NSURL *result);
+typedef void (^AOTCompletionBlock)(NSURLResponse *response, NSURL *filePath);
 typedef void (^AOTProgressBlock)(NSNumber *progress);
 typedef void (^AOTErrorBlock)(NSError *error);
 
@@ -36,9 +36,16 @@ typedef void (^AOTErrorBlock)(NSError *error);
  */
 - (id)initDownloadOperationForURL:(NSURL *)downloadURL
                    toBeSavedAtURL:(NSURL *)saveURL
+                         priority:(float)priority
               usingSessionManager:(AFURLSessionManager *)manager
                   completionBlock:(AOTCompletionBlock)completionBlock
                        errorBlock:(AOTErrorBlock)errorBlock
                     progressBlock:(AOTProgressBlock)progressBlock;
+
+@end
+
+@interface NSURLRequest (AOTNSURLSessionDownloadOperation)
+
+@property (nonatomic, strong) AOTNSURLSessionDownloadOperation *AOTNSURLSessionDownloadOperation_context;	//	Any custom information for any object
 
 @end

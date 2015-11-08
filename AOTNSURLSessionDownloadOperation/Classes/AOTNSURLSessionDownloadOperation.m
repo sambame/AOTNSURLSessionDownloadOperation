@@ -12,6 +12,8 @@
     AOTCompletionBlock _completionBlock;
     AOTProgressBlock _progressBlock;
     AOTErrorBlock _errorBlock;
+    NSURLSessionDownloadTask *_task;
+    float _priority;
     
     // Required NSOperation ivars
     BOOL _executing;
@@ -27,6 +29,7 @@
 
 - (id)initDownloadOperationForURL:(NSURL *)downloadURL
                    toBeSavedAtURL:(NSURL *)saveURL
+                         priority:(float)priority
               usingSessionManager:(AFURLSessionManager *)manager
                   completionBlock:(AOTCompletionBlock)completionBlock
                        errorBlock:(AOTErrorBlock)errorBlock
@@ -39,6 +42,7 @@
         self.saveURL = saveURL;
         self.sessionManager = manager;
         
+        _priority = priority;
         _completionBlock = [completionBlock copy];
         _errorBlock = [errorBlock copy];
         _progressBlock = [progressBlock copy];
@@ -93,36 +97,39 @@
  * Initiate the download and listen for the appropriate progress, error and completiong
  * events.
  */
-- (void)main
-{
+- (void)main {
     // The progress var will hold the download progress by reference
     NSProgress *progress;
     
     // Build a regular request to initate the download
     NSURLRequest *request = [[NSURLRequest alloc] initWithURL:self.downloadURL];
     
+    request.AOTNSURLSessionDownloadOperation_context = self;
+    
     // Create the download task
     __weak typeof(self)wself = self;
-    NSURLSessionDownloadTask *task = [self.sessionManager downloadTaskWithRequest:request progress:&progress destination:^NSURL *(NSURL *targetPath, NSURLResponse *response) {
-        return wself.saveURL;
-    } completionHandler:^(NSURLResponse *response, NSURL *filePath, NSError *error) {
-        
-        if (error) {
-            // Something went wrong, transparently report error
-            if (_errorBlock) {
-                _errorBlock(error);
-            }
-        } else {
-            // Download complete, report back with the saveURL
-            if (_completionBlock) {
-                _completionBlock(wself.saveURL);
-            }
-        }
-        
-        // Notify queue that this operation is done
-        // (in both error and success case)
-        [wself done];
-    }];
+    _task = [self.sessionManager downloadTaskWithRequest:request
+                                                 progress:&progress
+                                              destination:^NSURL *(NSURL *targetPath, NSURLResponse *response) {
+                                                  return wself.saveURL;
+                                              }
+                                        completionHandler:^(NSURLResponse *response, NSURL *filePath, NSError *error) {
+                                            if (error) {
+                                                // Something went wrong, transparently report error
+                                                if (_errorBlock) {
+                                                    _errorBlock(error);
+                                                }
+                                            } else {
+                                                // Download complete, report back with the saveURL
+                                                if (_completionBlock) {
+                                                    _completionBlock(response, filePath);
+                                                }
+                                            }
+                                            
+                                            // Notify queue that this operation is done
+                                            // (in both error and success case)
+                                            [wself done];
+                                        }];
     
     // Use KVO to observe the progress reported by the fractionCompleted property
     // See -observeValueForKeyPath:ofObject:change:context:
@@ -131,8 +138,11 @@
                   options:NSKeyValueObservingOptionNew
                   context:NULL];
     
+    _task.priority = _priority;
+    
+    
     // Explicitly start the task; all tasks start in suspended state
-    [task resume];
+    [_task resume];
 }
 
 /**
@@ -143,13 +153,25 @@
     return YES;
 }
 
+- (void)cancel {
+    [self willChangeValueForKey:@"isCancelled"];
+    
+    [_task cancel];
+    
+    [self didChangeValueForKey:@"isCancelled"];
+}
+
 /**
  * Called when the operation is about to be started.
  * Checks current state and starts the -main method.
  */
 - (void)start
 {
-    if( [self isFinished] || [self isCancelled] ) { [self done]; return; }
+    if( [self isFinished] || [self isCancelled] ) {
+        [self done];
+        return;
+    }
+    
     [self setExecuting:YES];
     
     [self main];
@@ -171,6 +193,20 @@
             });
         }
     }
+}
+
+@end
+
+static const char* objectUserInfoKey = "AOTNSURLSessionDownloadOperation";
+
+@implementation NSURLRequest (AOTNSURLSessionDownloadOperation)
+
+- (AOTNSURLSessionDownloadOperation *) AOTNSURLSessionDownloadOperation_context {
+    return objc_getAssociatedObject(self, objectUserInfoKey);
+}
+
+- (void) setAOTNSURLSessionDownloadOperation_context:(AOTNSURLSessionDownloadOperation *)AOTNSURLSessionDownloadOperation_context {    
+    objc_setAssociatedObject(self, objectUserInfoKey, AOTNSURLSessionDownloadOperation_context, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
 @end
