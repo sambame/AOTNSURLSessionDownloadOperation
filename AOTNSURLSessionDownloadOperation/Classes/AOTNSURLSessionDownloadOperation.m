@@ -7,6 +7,7 @@
 
 #import "AOTNSURLSessionDownloadOperation.h"
 #import <AFURLSessionManager.h>
+#import <objc/runtime.h>
 
 @interface AOTNSURLSessionDownloadOperation() {
     AOTCompletionBlock _completionBlock;
